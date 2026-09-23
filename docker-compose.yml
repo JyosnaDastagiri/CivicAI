@@ -1,0 +1,64 @@
+# Docker is OPTIONAL. The project also runs without Docker (see README).
+# This compose file spins up PostgreSQL + the FastAPI backend + the React frontend.
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: civicai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: civicai
+      POSTGRES_PASSWORD: civicai
+      POSTGRES_DB: civicai
+    ports:
+      - "5432:5432"
+    volumes:
+      - civicai_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U civicai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: civicai-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      USE_SQLITE: "false"
+      DATABASE_URL: postgresql+psycopg2://civicai:civicai@postgres:5432/civicai
+      JWT_SECRET: change_this_super_secret_key_in_production
+      AI_MODE: demo
+      GEMINI_API_KEY: ""
+      STORAGE_PROVIDER: local
+      ACKNOWLEDGEMENT_DEADLINE_HOURS: 6
+      CRITICAL_RESOLUTION_HOURS: 12
+      HIGH_RESOLUTION_HOURS: 24
+      MEDIUM_RESOLUTION_HOURS: 48
+      LOW_RESOLUTION_HOURS: 72
+      TEXT_SIMILARITY_THRESHOLD: 0.70
+      DUPLICATE_RADIUS_METERS: 100
+      SCHEDULER_INTERVAL_MINUTES: 1
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:3000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+
+  frontend:
+    build: ./frontend
+    container_name: civicai-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+
+volumes:
+  civicai_pgdata:
