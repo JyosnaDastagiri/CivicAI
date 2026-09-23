@@ -186,7 +186,7 @@ Officer Acknowledgement
            ▼
      Department Head
 
-🧠 AI Components
+##🧠 AI Components
 1. AI Issue Analysis
 
 The system analyzes the submitted image and description to identify the possible civic issue, severity, and safety risk.
@@ -311,7 +311,7 @@ The lightweight design keeps the project practical and reproducible on a normal 
 
 The project uses a modular monolithic architecture with a single frontend and backend, keeping deployment simple for a student project.
 
-👥 User Roles
+## 👥 User Roles
 Citizen
 Submit complaints
 Upload images
@@ -336,7 +336,7 @@ Configure system settings
 Monitor complaints
 View analytics
 Review audit logs
-📂 Project Structure
+## 📂 Project Structure
 CivicAI/
 │
 ├── frontend/
@@ -416,7 +416,7 @@ http://localhost:5173
 
 SQLite is used by default, so the project can be run locally without setting up PostgreSQL.
 
-🚀 Usage
+##🚀 Usage
 1. Login as Citizen
 
 Use a citizen account to access the complaint dashboard.
@@ -457,7 +457,7 @@ The officer updates the complaint and submits the resolution.
 
 If acknowledgement or resolution deadlines are missed, the complaint is automatically escalated.
 
-🧪 Testing
+## 🧪 Testing
 
 The project includes automated backend tests covering:
 
@@ -479,7 +479,7 @@ cd civicai
 
 pytest -v
 
-🔑 Demo Credentials
+## 🔑 Demo Credentials
 
 All seeded demo accounts use:
 
@@ -490,7 +490,7 @@ Officer	roads.officer@civicai.demo
 Department Head	roads.head@civicai.demo
 Admin	admin@civicai.demo
 
-📊 Project Status
+## 📊 Project Status
 
 Working Full-Stack Prototype
 
@@ -510,14 +510,14 @@ Notifications
 Analytics dashboards
 Audit logging
 
-⚠️ Limitations
+## ⚠️ Limitations
 The current prototype does not connect directly to real municipal government systems or APIs.
 Authority accounts are simulated internally using role-based accounts.
 AI capabilities use pre-trained/cloud services rather than a custom-trained model.
 Duplicate detection uses TF-IDF, Cosine Similarity, and GPS-based validation.
 Notifications are currently in-app; SMS and email are future enhancements.
 
-🔮 Future Scope
+## 🔮 Future Scope
 Integration with official municipal APIs
 SMS and email notifications
 Advanced computer vision models
