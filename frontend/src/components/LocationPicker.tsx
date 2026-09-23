@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import { LocateFixed } from "lucide-react";
 
@@ -24,6 +24,22 @@ const ClickHandler: React.FC<{ onChange: (lat: number, lon: number) => void }> =
       onChange(e.latlng.lat, e.latlng.lng);
     },
   });
+  return null;
+};
+
+// Keeps the map's actual viewport in sync with the selected latitude/longitude.
+// MapContainer's `center` prop is only applied on initial mount (react-leaflet
+// does not re-pan the map when `center` changes later), so without this the
+// marker would move to the correct coordinates but the visible map view would
+// not follow it. This does not change how a location is selected — it only
+// makes the map view track the already-correct latitude/longitude.
+const MapViewSync: React.FC<{ latitude: number; longitude: number }> = ({ latitude, longitude }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setView([latitude, longitude], map.getZoom());
+  }, [latitude, longitude]);
+
   return null;
 };
 
@@ -57,6 +73,7 @@ export const LocationPicker: React.FC<Props> = ({ latitude, longitude, onChange,
           />
           <Marker position={[latitude, longitude]} />
           <ClickHandler onChange={onChange} />
+          <MapViewSync latitude={latitude} longitude={longitude} />
         </MapContainer>
       </div>
       <p className="text-xs text-slate-400 mt-1">Lat: {latitude.toFixed(5)}, Lon: {longitude.toFixed(5)}</p>
