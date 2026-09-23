@@ -1,349 +1,530 @@
-# CivicAI – AI-Based Civic Issue Detection, Prioritization and Resolution System
 
-A complete, working, full-stack final-year project: an AI-assisted civic complaint
-management platform where citizens report issues (potholes, garbage, broken
-streetlights, water leakage, drainage, fallen trees, etc.), AI analyzes and drafts
-the complaint, lightweight algorithms detect duplicates and calculate priority,
-the system routes it to the right department, and a background scheduler
-enforces authority accountability through acknowledgement deadlines and
-automatic escalation.
+# 🏙️ CivicAI – AI-Based Civic Issue Detection, Prioritization and Resolution System
+
+CivicAI is an AI-powered civic issue management platform that allows citizens to report problems such as potholes, damaged roads, garbage accumulation, broken streetlights, water leakage, and other civic issues.
+
+The system combines **AI-assisted issue analysis, Generative AI, duplicate detection, priority scoring, automatic department assignment, acknowledgement tracking, deadline monitoring, escalation, and resolution management** into a single end-to-end workflow.
 
 ---
 
-## 1. Problem Statement
+## 📌 Table of Contents
 
-Civic issue reporting today is manual, unstructured, and unaccountable: citizens
-don't know if their complaint was ever actually seen, complaints are duplicated,
-and there is no transparent way to prioritize what needs urgent attention.
-
-## 2. Objectives
-
-- Let citizens report issues with an image, description, and location.
-- Use AI to understand the issue and draft a professional complaint.
-- Detect duplicate reports of the same issue nearby.
-- Calculate a transparent, explainable priority score.
-- Automatically route the complaint to the right department and officer.
-- **Prove** the responsible authority actually received it (acknowledgement).
-- Automatically escalate to a higher authority if deadlines are missed.
-- Give citizens full visibility through a timeline and notifications.
-
-## 3. Features
-
-- Role-based portals for Citizen, Officer, Department Head, and Admin.
-- 9-step guided complaint submission wizard (image → description → location →
-  AI analysis → generated complaint → review/edit → submit).
-- AI Demo Mode: works fully offline with **zero API keys**, with a clearly
-  labeled "Demo AI Mode" indicator in the UI.
-- TF-IDF + Cosine Similarity + GPS duplicate detection.
-- Transparent weighted priority scoring (no black-box ML).
-- Rule-based department routing and least-loaded officer assignment.
-- Mandatory officer acknowledgement workflow with deadline tracking.
-- Automatic background escalation scheduler (APScheduler).
-- Full audit trail and citizen-facing timeline.
-- In-app notifications (no SMS/email dependency required).
-- Admin-configurable deadlines, thresholds, and priority weights.
-- Recharts-based analytics dashboards; Leaflet + OpenStreetMap maps.
-- 18 automated backend tests covering auth, AI, duplicates, priority,
-  assignment, and authorization boundaries.
-
-## 4. Architecture
-
-```
-React Frontend (Vite + TS + Tailwind)
-        |
-        v
-FastAPI Backend (modular monolith)
-        |
-        +-- PostgreSQL / SQLite
-        +-- Object Storage (local dir or Supabase Storage)
-        +-- AI Vision / Gemini (or Demo AI Service)
-        +-- In-app Notification System
-        +-- APScheduler Escalation Job (runs every N minutes)
-```
-
-No microservices, no Kafka, no Kubernetes — a single deployable backend and a
-single deployable frontend, as appropriate for a lightweight student project.
-
-## 5. Complete Workflow
-
-```
-Citizen submits image + description + location
-   -> AI-based issue detection (category, severity, safety risk)
-   -> Generative AI drafts a professional complaint
-   -> Citizen reviews/edits
-   -> Duplicate check (TF-IDF + cosine similarity + Haversine GPS distance)
-   -> Priority scoring (weighted, transparent, 0-100 -> LOW/MEDIUM/HIGH/CRITICAL)
-   -> Department assignment (rule-based) + officer selection
-   -> Officer notified, acknowledgement deadline starts
-   -> Officer acknowledges?
-        YES -> "Received & Acknowledged" + resolution deadline starts
-        NO (deadline exceeded) -> automatic escalation to Department Head
-   -> Officer marks IN_PROGRESS -> submits resolution evidence -> RESOLVED
-        (if resolution deadline exceeded -> automatic escalation again)
-   -> Citizen sees full timeline and can close the complaint
-```
-
-## 6. AI Components
-
-`AIService` is an abstraction (`backend/app/services/ai_service.py`) with two
-implementations:
-
-- **DemoAIService** — deterministic, keyword-based, fully offline. Used when
-  `AI_MODE=demo` or when no `GEMINI_API_KEY` is set. The app **never crashes**
-  due to a missing AI key.
-- **GeminiAIService** — calls Google Gemini's `generateContent` endpoint when
-  `AI_MODE=live` and a key is configured. Falls back to Demo automatically on
-  any API failure.
-
-Both implement `analyze_image()` and `generate_complaint()`, so the provider
-can be swapped without touching any other code.
-
-## 7. Algorithms (documented, no black-box ML)
-
-| Algorithm | Where | Purpose |
-|---|---|---|
-| TF-IDF vectorization | `duplicate_service.py` | Represent complaint text numerically |
-| Cosine similarity | `duplicate_service.py` | Compare two complaints' text similarity |
-| Haversine formula | `duplicate_service.py` | GPS distance between two complaints |
-| Weighted priority scoring | `priority_service.py` | Transparent 0–100 priority score |
-| Rule-based department routing | `assignment_service.py` | Category → department mapping |
-| Rule-based escalation | `workers/scheduler.py` | Deadline-based automatic escalation |
-
-**No XGBoost. No SHAP. No local GPU training.** These were deliberately
-excluded per the project's lightweight, transparent, and reproducible design
-goals.
-
-## 8. Database Design
-
-15 tables: `User`, `Department`, `Complaint`, `ComplaintImage`,
-`ComplaintAnalysis`, `ComplaintLocation`, `ComplaintDuplicate`,
-`PriorityAnalysis`, `ComplaintAssignment`, `StatusHistory`, `Escalation`,
-`Notification`, `Resolution`, `SystemSetting`, `AuditLog`.
-
-See `backend/app/models/` for full SQLAlchemy definitions with foreign keys
-and relationships.
-
-## 9. User Roles
-
-- **CITIZEN** — submit/track complaints, view AI analysis, timeline, resolution.
-- **OFFICER** — acknowledge, work on, and resolve assigned complaints.
-- **DEPARTMENT_HEAD** — monitor department complaints, handle escalations, reassign.
-- **ADMIN** — manage users/departments, configure settings, view all analytics/audit logs.
-
-## 10. Authority Acknowledgement Mechanism
-
-Every assignment stores `assigned_at`, `acknowledgement_deadline`,
-`acknowledged_at`, `acknowledged_by`, and `resolution_deadline`. The officer
-dashboard shows a prominent **"Acknowledge Complaint"** button. On click, the
-timestamp and officer ID are recorded, an audit log entry is created, and the
-citizen is notified and sees "✓ Received & Acknowledged by Officer" with the
-exact date/time on their timeline. This is the strongest evidence of
-authority receipt in the system.
-
-## 11. Escalation Mechanism
-
-A lightweight APScheduler background job (no Celery/Kafka) runs every
-`SCHEDULER_INTERVAL_MINUTES` and:
-
-1. Finds assignments past `acknowledgement_deadline` with no acknowledgement
-   → escalates to the Department Head, notifies them, logs the audit trail,
-   and updates the citizen's timeline.
-2. Finds `IN_PROGRESS` assignments past `resolution_deadline` → escalates
-   again with a new deadline.
-
-Duplicate escalation is prevented by checking for an existing OPEN escalation
-with the same reason before creating a new one.
+- [About the Project](#-about-the-project)
+- [Features](#-features)
+- [Tech Stack](#️-tech-stack)
+- [Project Workflow](#-project-workflow)
+- [AI Components](#-ai-components)
+- [System Architecture](#-system-architecture)
+- [User Roles](#-user-roles)
+- [Project Structure](#-project-structure)
+- [Installation](#️-installation)
+- [Usage](#-usage)
+- [Testing](#-testing)
+- [Limitations](#-limitations)
+- [Future Scope](#-future-scope)
 
 ---
 
-## 12. Installation
+## 📖 About the Project
 
-### Prerequisites
-- Python 3.11+ (3.12 recommended)
-- Node.js 18+
-- (Optional) PostgreSQL 14+ — SQLite is used automatically if you skip this
-- (Optional) Docker Desktop — the project also runs natively without Docker
+Civic issue reporting is often manual, unstructured, and difficult to track. Citizens may not know whether their complaint has been received, complaints can be duplicated, and urgent issues may not receive appropriate priority.
 
-### Option A — Run natively without Docker (Windows PowerShell)
+CivicAI addresses these problems through an integrated digital workflow.
 
-```powershell
-# 1. Clone / unzip the project, then:
+Citizens can submit an issue with:
+
+- 📷 Image
+- 📝 Description
+- 📍 Location
+
+The system then analyzes the issue, generates a structured complaint, checks for duplicate reports, calculates priority, assigns the complaint to the appropriate department and officer, and tracks it until resolution.
+
+The system also provides **authority acknowledgement and automatic escalation** when deadlines are missed.
+
+---
+
+## ✨ Features
+
+### 👤 Citizen
+
+- Report civic issues with image, description, and location
+- AI-assisted issue and severity analysis
+- AI-generated professional complaint
+- Review and edit generated complaint
+- Duplicate complaint detection
+- Transparent priority score
+- Complaint status and timeline tracking
+- Authority acknowledgement visibility
+- In-app notifications
+
+### 🤖 AI & NLP
+
+- AI-based civic issue analysis
+- Generative AI complaint creation
+- TF-IDF text vectorization
+- Cosine Similarity for duplicate detection
+- GPS-based geographic validation
+- Context-aware weighted priority scoring
+
+### 🏢 Authority Workflow
+
+- Automatic department assignment
+- Officer assignment
+- Mandatory complaint acknowledgement
+- Deadline tracking
+- Automatic escalation
+- Resolution tracking
+- Resolution evidence
+- Citizen notification
+
+### 🔐 Administration
+
+- JWT authentication
+- Role-Based Access Control
+- User and department management
+- Complaint monitoring
+- Analytics dashboards
+- Audit logs
+- Configurable priority and deadline settings
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- React Router
+- Leaflet
+- OpenStreetMap
+- Recharts
+
+### Backend
+
+- Python
+- FastAPI
+- SQLAlchemy
+- Pydantic
+- JWT Authentication
+- Role-Based Access Control
+
+### Database
+
+- SQLite for local/demo execution
+- PostgreSQL supported
+
+### AI / Machine Learning
+
+- Gemini AI
+- Demo AI Mode
+- Scikit-learn
+- TF-IDF
+- Cosine Similarity
+- Haversine Distance
+- Weighted Priority Scoring
+
+### Other
+
+- APScheduler
+- REST APIs
+- Local / Supabase object storage
+
+---
+
+## 🔄 Project Workflow
+
+```text
+Citizen
+   │
+   ▼
+Image + Description + Location
+   │
+   ▼
+AI Issue Detection
+   │
+   ▼
+Severity & Safety Analysis
+   │
+   ▼
+AI Complaint Generation
+   │
+   ▼
+Citizen Review / Edit
+   │
+   ▼
+Duplicate Detection
+(TF-IDF + Cosine Similarity + GPS)
+   │
+   ▼
+Priority Scoring
+   │
+   ▼
+Department & Officer Assignment
+   │
+   ▼
+Officer Acknowledgement
+   │
+   ├── Acknowledged
+   │       │
+   │       ▼
+   │   Work in Progress
+   │       │
+   │       ▼
+   │     Resolved
+   │       │
+   │       ▼
+   │   Citizen Notification
+   │
+   └── Deadline Missed
+           │
+           ▼
+      Automatic Escalation
+           │
+           ▼
+     Department Head
+
+🧠 AI Components
+1. AI Issue Analysis
+
+The system analyzes the submitted image and description to identify the possible civic issue, severity, and safety risk.
+
+Example categories include:
+
+Pothole
+Road Damage
+Garbage Accumulation
+Broken Streetlight
+Water Leakage
+Drainage Issue
+Fallen Tree
+2. Generative AI Complaint Generation
+
+The citizen's description is converted into a structured and professional complaint.
+
+The generated complaint can be reviewed and edited before submission.
+
+CivicAI supports two AI modes:
+
+Demo AI Mode
+
+Works offline
+Requires no API key
+Uses deterministic rule-based analysis
+
+Live AI Mode
+
+Uses Google Gemini
+Requires a Gemini API key
+Automatically falls back to Demo AI if the API request fails
+3. Duplicate Detection
+
+Potential duplicate complaints are identified using:
+
+Complaint Description
+        │
+        ▼
+   TF-IDF
+        │
+        ▼
+Cosine Similarity
+        │
+        ▼
+Text Similarity
+        │
+        +
+GPS Distance
+        │
+        +
+Issue Category
+        │
+        ▼
+Duplicate Validation
+4. Priority Scoring
+
+CivicAI uses a transparent weighted scoring approach rather than a black-box priority prediction model.
+
+The priority score considers factors such as:
+
+Issue severity
+Safety risk
+Location importance
+Recurrence
+Related reports
+Category urgency
+
+The final score is converted into:
+
+LOW
+MEDIUM
+HIGH
+CRITICAL
+
+No XGBoost, SHAP, or local GPU training is used.
+
+The lightweight design keeps the project practical and reproducible on a normal student laptop.
+
+🏗️ System Architecture
+             ┌─────────────────────┐
+             │       Citizen       │
+             └──────────┬──────────┘
+                        │
+                        ▼
+             ┌─────────────────────┐
+             │   React Frontend    │
+             │ TypeScript + Vite   │
+             │    + Tailwind       │
+             └──────────┬──────────┘
+                        │
+                        ▼
+             ┌─────────────────────┐
+             │   FastAPI Backend   │
+             │   Modular Monolith  │
+             └──────────┬──────────┘
+                        │
+       ┌────────────────┼────────────────┐
+       │                │                │
+       ▼                ▼                ▼
+   AI Services      NLP Services    Priority Engine
+       │                │                │
+       │          TF-IDF + Cosine       │
+       │          + GPS Distance        │
+       │                │                │
+       └────────────────┼────────────────┘
+                        │
+                        ▼
+             ┌─────────────────────┐
+             │    SQLite /         │
+             │    PostgreSQL       │
+             └──────────┬──────────┘
+                        │
+                        ▼
+             ┌─────────────────────┐
+             │ Authority Workflow  │
+             │ Assignment          │
+             │ Acknowledgement     │
+             │ Resolution          │
+             │ Escalation          │
+             └─────────────────────┘
+
+The project uses a modular monolithic architecture with a single frontend and backend, keeping deployment simple for a student project.
+
+👥 User Roles
+Citizen
+Submit complaints
+Upload images
+Provide location
+Review AI-generated complaints
+Track status and timeline
+View acknowledgement and resolution
+Officer
+View assigned complaints
+Acknowledge complaints
+Update complaint status
+Work on assigned issues
+Submit resolution details
+Department Head
+Monitor department complaints
+Handle escalated complaints
+Reassign complaints
+Monitor department activity
+Admin
+Manage users and departments
+Configure system settings
+Monitor complaints
+View analytics
+Review audit logs
+📂 Project Structure
+CivicAI/
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── layouts/
+│   │   ├── hooks/
+│   │   ├── services/
+│   │   └── utils/
+│   ├── package.json
+│   └── vite.config.ts
+│
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── models/
+│   │   ├── schemas/
+│   │   ├── services/
+│   │   ├── workers/
+│   │   └── main.py
+│   │
+│   ├── tests/
+│   ├── seed.py
+│   ├── requirements.txt
+│   └── .env.example
+│
+├── tests/
+├── uploads/
+├── docker-compose.yml
+├── .gitignore
+└── README.md
+⚙️ Installation
+Prerequisites
+Python 3.11+
+Node.js 18+
+PostgreSQL — optional
+Docker Desktop — optional
+Backend
 cd civicai\backend
 
-# 2. Create and activate a virtual environment
 python -m venv venv
+
 .\venv\Scripts\Activate.ps1
 
-# 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure environment (SQLite works out of the box — no edits needed)
 Copy-Item .env.example .env
 
-# 5. Seed demo data (creates SQLite DB + departments + users + complaints)
 python seed.py
 
-# 6. Start the backend
 uvicorn app.main:app --reload --port 8000
-```
 
-In a **second** PowerShell window:
+Backend:
 
-```powershell
+http://localhost:8000
+
+Swagger API Documentation:
+
+http://localhost:8000/docs
+Frontend
+
+Open a second terminal:
+
 cd civicai\frontend
+
 npm install
+
 Copy-Item .env.example .env
+
 npm run dev
-```
 
-Open **http://localhost:5173** and sign in with a demo account below.
+Frontend:
 
-### Option B — Run with PostgreSQL locally
+http://localhost:5173
 
-1. Create a database: `createdb civicai` (or via pgAdmin).
-2. In `backend/.env`, set:
-   ```
-   USE_SQLITE=false
-   DATABASE_URL=postgresql+psycopg2://<user>:<password>@localhost:5432/civicai
-   ```
-3. Continue with steps 3–6 above.
+SQLite is used by default, so the project can be run locally without setting up PostgreSQL.
 
-### Option C — Run with Docker (optional)
+🚀 Usage
+1. Login as Citizen
 
-```powershell
-docker compose up --build
-```
+Use a citizen account to access the complaint dashboard.
 
-This starts PostgreSQL, the backend on port 8000, and the frontend on port 5173.
-Run `docker compose exec backend python seed.py` once to seed demo data.
+2. Submit an Issue
 
----
+Upload an image, enter a description, and provide the issue location.
 
-## 13. Environment Variables
+3. AI Analysis
 
-See `backend/.env.example` and `frontend/.env.example`. Key variables:
+The system analyzes the issue and determines its category, severity, and safety risk.
 
-| Variable | Purpose |
-|---|---|
-| `AI_MODE` | `demo` (offline, default) or `live` (Gemini) |
-| `GEMINI_API_KEY` | Only needed for `AI_MODE=live` |
-| `USE_SQLITE` | `true` for zero-setup demo, `false` for PostgreSQL |
-| `ACKNOWLEDGEMENT_DEADLINE_HOURS` | Default 6, admin-configurable at runtime |
-| `TEXT_SIMILARITY_THRESHOLD` / `DUPLICATE_RADIUS_METERS` | Duplicate detection tuning |
-| `SCHEDULER_INTERVAL_MINUTES` | Escalation check frequency |
+4. Review Complaint
 
-**No secrets are hard-coded anywhere in the codebase.**
+A professional complaint is generated and can be reviewed or edited.
 
-## 14. Demo Credentials
+5. Duplicate & Priority Analysis
 
-All demo accounts use the password: **`Demo@123`**
+The system checks for possible duplicate complaints and calculates a transparent priority score.
 
-| Role | Email |
-|---|---|
-| Admin | admin@civicai.demo |
-| Department Head (Roads) | roads.head@civicai.demo |
-| Officer (Roads) | roads.officer@civicai.demo |
-| Citizen | citizen@civicai.demo |
+6. Department Assignment
 
-(4 more officers and 2 more heads across Sanitation/Electrical/Water/Drainage
-are also seeded — see `backend/seed.py`.)
+The complaint is automatically assigned to the appropriate department and officer.
 
-## 15. API Overview
+7. Acknowledgement
 
-Interactive API docs are auto-generated at **http://localhost:8000/docs**
-(Swagger UI) once the backend is running. Key endpoint groups:
-`/api/auth`, `/api/complaints`, `/api/ai`, `/api/complaints/{id}/duplicate-check`,
-`/api/complaints/{id}/priority`, `/api/complaints/{id}/assign`,
-`/api/complaints/{id}/acknowledge`, `/api/complaints/{id}/resolve`,
-`/api/escalations`, `/api/notifications`, `/api/dashboard/*`,
-`/api/analytics/*`, `/api/settings`, `/api/audit-logs`, `/api/admin/*`.
+The officer acknowledges receipt of the complaint.
 
-## 16. Testing
+The citizen can see:
 
-```powershell
+✓ Received & Acknowledged by Officer
+Date & Time
+8. Resolution
+
+The officer updates the complaint and submits the resolution.
+
+9. Escalation
+
+If acknowledgement or resolution deadlines are missed, the complaint is automatically escalated.
+
+🧪 Testing
+
+The project includes automated backend tests covering:
+
+Authentication
+Protected routes
+AI Demo Mode
+Complaint creation
+Duplicate detection
+TF-IDF
+Cosine Similarity
+Geographic distance
+Priority scoring
+Department assignment
+Role-based authorization
+
+Run the tests with:
+
 cd civicai
-pip install -r backend\requirements.txt
-cd tests\backend
+
 pytest -v
-```
 
-18 tests cover: registration/login/protected routes, AI demo mode, the full
-complaint creation pipeline, TF-IDF/cosine/Haversine algorithms, department
-routing, and role-based authorization boundaries (citizens cannot access
-admin endpoints, etc.).
+🔑 Demo Credentials
 
-## 17. Demonstrating the Project (Evaluation Script)
+All seeded demo accounts use:
 
-1. **Login as Citizen** → Report Issue → upload a pothole photo → describe
-   *"Large pothole near college entrance"* → see AI detect **Pothole / HIGH /
-   Safety Risk: Yes** (labeled "Demo AI Mode") → see the generated complaint →
-   edit if desired → submit. Note the duplicate check and **HIGH priority**
-   with its plain-English explanation, and that it's auto-assigned to
-   **Roads & Infrastructure**.
-2. **Login as the assigned Officer** → do **not** acknowledge it yet.
-3. Wait for the scheduler interval (or lower `ACKNOWLEDGEMENT_DEADLINE_HOURS`
-   to a few minutes and `SCHEDULER_INTERVAL_MINUTES=1` in Admin Settings for
-   a live demo) → the complaint automatically escalates → **login as
-   Department Head** and see the escalation notification.
-4. **Submit a second complaint**, this time **acknowledge it promptly** as
-   the officer → citizen sees "✓ Received & Acknowledged by Officer" with
-   timestamp → officer moves it **IN_PROGRESS → RESOLVED** with evidence →
-   citizen sees the full timeline and closes the complaint.
-5. **Login as Admin** to show analytics, audit logs, and system settings.
+Password: Demo@123
+Role	Email
+Citizen	citizen@civicai.demo
+Officer	roads.officer@civicai.demo
+Department Head	roads.head@civicai.demo
+Admin	admin@civicai.demo
 
-This entire scenario works with **zero external API keys** using AI Demo Mode.
+📊 Project Status
 
-## 18. Screenshots
+Working Full-Stack Prototype
 
-*(Add screenshots of the citizen wizard, officer dashboard, department head
-escalations view, and admin analytics here before submission.)*
+CivicAI currently supports:
 
-## 19. Limitations
+Citizen complaint reporting
+AI-assisted issue analysis
+AI complaint generation
+Duplicate detection
+Priority scoring
+Department assignment
+Officer acknowledgement
+Deadline monitoring
+Automatic escalation
+Resolution tracking
+Notifications
+Analytics dashboards
+Audit logging
 
-- The project does **not** connect to real municipal government systems or
-  APIs. Authority accounts (Department Heads, Officers, Admin) are **simulated
-  internally** using role-based accounts seeded for demonstration purposes.
-- AI vision/generation uses pre-trained/cloud capabilities (Gemini) rather
-  than a custom-trained model, by design, to remain lightweight and
-  reproducible on a normal student laptop.
-- Duplicate detection uses TF-IDF/cosine/GPS heuristics rather than deep
-  semantic embeddings — sufficient for demonstration, not production-grade
-  at city scale.
-- Notifications are in-app only; SMS/email integration is future scope.
+⚠️ Limitations
+The current prototype does not connect directly to real municipal government systems or APIs.
+Authority accounts are simulated internally using role-based accounts.
+AI capabilities use pre-trained/cloud services rather than a custom-trained model.
+Duplicate detection uses TF-IDF, Cosine Similarity, and GPS-based validation.
+Notifications are currently in-app; SMS and email are future enhancements.
 
-## 20. Future Scope
+🔮 Future Scope
+Integration with official municipal APIs
+SMS and email notifications
+Advanced computer vision models
+Multilingual complaint support
+Mobile application
+Advanced geospatial analytics and heatmaps
+Automated resolution verification
+Predictive workload analysis
+IoT integration for smart-city systems
 
-- Real municipal API integration (once official access is granted).
-- SMS/email notification channels.
-- Advanced computer vision (custom-trained detection models).
-- Native mobile application.
-- Multilingual complaint support.
-- Advanced geospatial analytics / heatmaps.
-- Image-based automatic resolution verification.
-- Predictive officer workload forecasting.
-- IoT sensor integration (e.g., smart streetlights, water sensors).
-
----
-
-## Project Structure
-
-```
-civicai/
-├── frontend/           React + TypeScript + Vite + Tailwind
-│   └── src/{components,pages,layouts,hooks,services,context,types,utils}
-├── backend/             FastAPI modular monolith
-│   └── app/{api,core,models,schemas,services,workers,utils}
-├── tests/backend/       pytest suite (18 tests)
-├── uploads/             Local file storage fallback
-├── docker-compose.yml   Optional containerized setup
-└── README.md
-```
-
-## Academic Positioning
-
-CivicAI integrates image understanding, Generative AI, lightweight text
-similarity, geospatial validation, transparent priority scoring, rule-based
-department assignment, authority acknowledgement, and automatic escalation
-into a single end-to-end platform. The contribution is the **integrated,
-lightweight, practical combination** of these techniques into one
-accountable civic workflow — not any single novel algorithm.
